@@ -1,0 +1,954 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Jon's Fire: Advanced FB5X Simulator</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; transition: background-color 0.3s; }
+        
+        /* Device Mode Classes */
+        .desktop-mode { max-width: 64rem; } 
+        .mobile-mode { max-width: 28rem; } 
+        .mobile-mode .responsive-grid { grid-template-columns: 1fr; }
+        .mobile-mode .responsive-flex { flex-direction: column; }
+        .mobile-mode .responsive-hide { display: none; }
+        
+        .glass-panel {
+            background: rgba(30, 41, 59, 0.85);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        
+        .btn-primary { background: linear-gradient(135deg, #ef4444 0%, #b91c1c 100%); transition: all 0.2s; }
+        .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(239, 68, 68, 0.4); }
+        .btn-primary:active { transform: translateY(0); }
+        
+        .btn-secondary { background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%); transition: all 0.2s; }
+        .btn-secondary:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(59, 130, 246, 0.4); }
+
+        #canvas-container {
+            position: relative;
+            width: 100%;
+            border-radius: 0.5rem;
+            overflow: hidden;
+            background: #0f172a;
+            border: 2px solid #334155;
+            aspect-ratio: 2 / 1;
+        }
+        canvas { display: block; width: 100%; height: 100%; object-fit: contain; }
+        
+        @keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.7); } 70% { box-shadow: 0 0 0 10px rgba(59, 130, 246, 0); } 100% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0); } }
+        .hotspot { animation: pulse 2s infinite; }
+        
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        .animate-fade-in { animation: fadeIn 0.4s ease-out forwards; }
+    </style>
+</head>
+<body class="bg-slate-900 text-slate-100 min-h-screen flex flex-col items-center p-4 sm:p-6 transition-all duration-500">
+
+    <header id="main-header" class="w-full flex justify-between items-center mb-6 border-b border-slate-700 pb-4 desktop-mode mx-auto transition-all duration-500">
+        <div>
+            <h1 class="text-2xl sm:text-3xl font-bold text-red-500 flex items-center gap-2">
+                <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2c1.5 2 3 5.5 3 8s-1.5 4.5-3 4.5-3-2-3-4.5 3-6 3-8z"/><path d="M12 22a7 7 0 0 0 7-7c0-2-1-3.9-3-5.5s-3.5-4-4-5.5c-.5 1.5-2 4-4 5.5S5 13 5 15a7 7 0 0 0 7 7z"/></svg>
+                Jon's Fire Academy
+            </h1>
+            <p class="text-slate-400 text-xs sm:text-sm">Advanced FB5X Training Suite</p>
+        </div>
+        <div class="flex flex-col items-end gap-2">
+            <div id="score-display" class="hidden text-sm sm:text-lg font-bold text-blue-400 bg-slate-800 px-3 py-1 rounded-lg border border-slate-700">
+                Score: <span id="current-score">0</span>
+            </div>
+            <div class="flex items-center bg-slate-800 rounded-lg p-1 border border-slate-700">
+                <button onclick="setDeviceMode('mobile')" id="btn-dev-mobile" class="px-2 sm:px-3 py-1 text-xs sm:text-sm rounded text-slate-400 hover:text-white transition-colors">Phone View</button>
+                <button onclick="setDeviceMode('desktop')" id="btn-dev-desktop" class="px-2 sm:px-3 py-1 text-xs sm:text-sm rounded bg-slate-600 text-white font-bold transition-colors shadow">PC View</button>
+            </div>
+        </div>
+    </header>
+
+    <main id="app-container" class="w-full flex-grow flex flex-col gap-6 desktop-mode mx-auto transition-all duration-500">
+        <!-- Views injected via JS -->
+    </main>
+
+    <footer class="mt-8 text-slate-500 text-xs sm:text-sm pb-4 text-center">
+        <p>Operational training tool. Ensure environmental safety (minimise runoff) during live drills.</p>
+    </footer>
+
+    <script>
+        // --- DATA & STATE ---
+        const state = {
+            view: 'menu', 
+            score: 0,
+            currentQuestionIndex: 0,
+            activeTechnique: 'none',
+            walker: { active: false, x: 250 },
+            pressure: 5.5,
+            mix: 3,
+            wind: 0,
+            gameMode: 'sandbox', 
+            timeRemaining: 45,
+            concentrate: 100,
+            gameStatus: 'playing', 
+            deviceMode: 'desktop'
+        };
+
+        // Zubi code personalization
+        console.log("System Status. Zubi code: 0 (Happening), 94 (Code injected).");
+
+        function switchTab(tabId) {
+            document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
+            const target = document.getElementById(tabId);
+            if(target) target.classList.remove('hidden');
+            
+            document.querySelectorAll('.tab-btn').forEach(el => {
+                el.classList.remove('border-blue-500', 'text-blue-400');
+                el.classList.add('border-transparent', 'text-slate-400');
+            });
+            const activeBtn = document.getElementById('btn-' + tabId);
+            if(activeBtn) {
+                activeBtn.classList.remove('border-transparent', 'text-slate-400');
+                activeBtn.classList.add('border-blue-500', 'text-blue-400');
+            }
+        }
+
+        function setDeviceMode(mode) {
+            state.deviceMode = mode;
+            const container = document.getElementById('app-container');
+            const header = document.getElementById('main-header');
+            
+            if (mode === 'mobile') {
+                container.classList.remove('desktop-mode'); container.classList.add('mobile-mode');
+                header.classList.remove('desktop-mode'); header.classList.add('mobile-mode');
+                document.getElementById('btn-dev-desktop').className = "px-2 sm:px-3 py-1 text-xs sm:text-sm rounded text-slate-400 hover:text-white transition-colors";
+                document.getElementById('btn-dev-mobile').className = "px-2 sm:px-3 py-1 text-xs sm:text-sm rounded bg-slate-600 text-white font-bold transition-colors shadow";
+            } else {
+                container.classList.remove('mobile-mode'); container.classList.add('desktop-mode');
+                header.classList.remove('mobile-mode'); header.classList.add('desktop-mode');
+                document.getElementById('btn-dev-mobile').className = "px-2 sm:px-3 py-1 text-xs sm:text-sm rounded text-slate-400 hover:text-white transition-colors";
+                document.getElementById('btn-dev-desktop').className = "px-2 sm:px-3 py-1 text-xs sm:text-sm rounded bg-slate-600 text-white font-bold transition-colors shadow";
+            }
+        }
+
+        // --- AUDIO ENGINE ---
+        let audioCtx;
+        const synth = {
+            pumpOsc: null, pumpGain: null,
+            hissNoise: null, hissGain: null,
+            boilOsc: null, boilGain: null,
+            init: function() {
+                if (audioCtx) return;
+                const AudioContext = window.AudioContext || window.webkitAudioContext;
+                if(!AudioContext) return;
+                audioCtx = new AudioContext();
+                
+                this.pumpOsc = audioCtx.createOscillator();
+                this.pumpOsc.type = 'triangle';
+                this.pumpOsc.frequency.setValueAtTime(55, audioCtx.currentTime); 
+                this.pumpGain = audioCtx.createGain();
+                this.pumpGain.gain.setValueAtTime(0, audioCtx.currentTime);
+                this.pumpOsc.connect(this.pumpGain).connect(audioCtx.destination);
+                this.pumpOsc.start();
+
+                const bufferSize = audioCtx.sampleRate * 2; 
+                const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+                const data = buffer.getChannelData(0);
+                for (let i = 0; i < bufferSize; i++) data[i] = Math.random() * 2 - 1;
+                
+                this.hissNoise = audioCtx.createBufferSource();
+                this.hissNoise.buffer = buffer;
+                this.hissNoise.loop = true;
+                this.hissGain = audioCtx.createGain();
+                this.hissGain.gain.setValueAtTime(0, audioCtx.currentTime);
+                
+                const filter = audioCtx.createBiquadFilter();
+                filter.type = 'lowpass';
+                filter.frequency.value = 2000;
+                
+                this.hissNoise.connect(filter).connect(this.hissGain).connect(audioCtx.destination);
+                this.hissNoise.start();
+
+                this.boilOsc = audioCtx.createOscillator();
+                this.boilOsc.type = 'sawtooth';
+                this.boilOsc.frequency.setValueAtTime(40, audioCtx.currentTime);
+                this.boilGain = audioCtx.createGain();
+                this.boilGain.gain.setValueAtTime(0, audioCtx.currentTime);
+                this.boilOsc.connect(this.boilGain).connect(audioCtx.destination);
+                this.boilOsc.start();
+            },
+            update: function(isSpraying, isWaterHittingFuel) {
+                if (!audioCtx) return;
+                if (audioCtx.state === 'suspended') audioCtx.resume();
+                const now = audioCtx.currentTime;
+                
+                if (isSpraying) {
+                    this.pumpGain.gain.setTargetAtTime(0.3, now, 0.1);
+                    let hissVol = (state.activeTechnique === 'dry-powder') ? 0.4 : 0.2;
+                    if(state.pressure > 7.5) hissVol += 0.2;
+                    this.hissGain.gain.setTargetAtTime(hissVol, now, 0.1);
+                } else {
+                    this.pumpGain.gain.setTargetAtTime(0, now, 0.1);
+                    this.hissGain.gain.setTargetAtTime(0, now, 0.1);
+                }
+
+                if (isWaterHittingFuel) {
+                    this.boilGain.gain.setTargetAtTime(0.5, now, 0.05);
+                    this.boilOsc.frequency.setTargetAtTime(40 + Math.random()*30, now, 0.05);
+                } else {
+                    this.boilGain.gain.setTargetAtTime(0, now, 0.2);
+                }
+            },
+            stopAll: function() {
+                if(!audioCtx) return;
+                const now = audioCtx.currentTime;
+                if(this.pumpGain) this.pumpGain.gain.setTargetAtTime(0, now, 0.1);
+                if(this.hissGain) this.hissGain.gain.setTargetAtTime(0, now, 0.1);
+                if(this.boilGain) this.boilGain.gain.setTargetAtTime(0, now, 0.1);
+            }
+        };
+
+        const quizQuestions = [
+            { q: "What four elements must be present to produce mechanical foam?", options: ["Water, Heat, Fuel, Chemical Reaction", "Foam concentrate, Water, Air, Mechanical agitation", "Foam concentrate, Nitrogen, Pressure, Branch pipe", "Dry powder, Water, Air, Heat"], answer: 1, explanation: "Foam concentrate, water, air, and mechanical agitation must be blended correctly." },
+            { q: "Which application technique is best suited for dike fires or spills around overturned vehicles?", options: ["Roll-On Method", "Bank-Down Method", "Rain-Down Method", "Direct Injection"], answer: 1, explanation: "The Bank-Down Method directs foam onto an elevated object and lets it run down onto the fuel surface." },
+            { q: "What happens if you walk through an established foam blanket?", options: ["The foam multiplies due to agitation", "The vapor seal is broken, allowing flammable vapors to escape and reignite", "The water content drains faster", "Nothing"], answer: 1, explanation: "Walking breaks the physical seal, immediately creating a hazard for reignition." },
+            { q: "What is a practical tip for ensuring continuous foam supply when using the branch dip tube?", options: ["Add water to the concentrate drum", "Cut the top off the foam drum to allow a second firefighter to continuously pour fresh foam in", "Use a 50mm hose instead of 70mm", "Place the drum above the branch for gravity feed"], answer: 1, explanation: "Cutting the top off allows continuous decanting, preventing the suction from breaking." },
+            { q: "Why must the 70mm delivery hose between an inline inductor and the FB5X NOT exceed 60 metres?", options: ["The hose will burst from the pressure", "Friction loss and back-pressure will stop the inductor from picking up the foam concentrate", "The water will cool down too much", "The foam will over-expand inside the hose"], answer: 1, explanation: "Exceeding 60m creates too much back-pressure, breaking the Venturi suction effect at the inductor." },
+            { q: "What is the primary hazard of applying a straight stream of water onto a Class B burning liquid pool?", options: ["It is electrically conductive", "It dilutes the fuel making it harder to clean up", "Water sinks below the fuel, boils into steam, and causes a violent splash that spreads the fire", "It creates excessive smoke"], answer: 2, explanation: "Water sinks and rapidly boils beneath the fuel layer, causing violent and dangerous splashing/flare-ups." },
+            { q: "When handling the FB5X, why must you hold it by the designated black handle?", options: ["It provides an electrical ground", "To avoid freezing your hands", "To prevent blocking the Venturi air entrainment vents near the base", "To aim more accurately"], answer: 2, explanation: "Covering the base blocks the air vents, preventing the foam from properly aerating." }
+        ];
+
+        // --- VIEWS ---
+        const views = {
+            menu: `
+                <div class="glass-panel p-6 sm:p-8 rounded-2xl text-center animate-fade-in">
+                    <h2 class="text-2xl sm:text-3xl font-bold mb-4">Select a Training Module</h2>
+                    <p class="text-slate-300 mb-8 max-w-2xl mx-auto text-sm sm:text-base">Master the theory and practical application of the Chubb FB5X foam branch pipe. Choose a module below to begin.</p>
+                    
+                    <div class="grid grid-cols-1 sm:grid-cols-2 responsive-grid gap-4 sm:gap-6">
+                        <button onclick="navigate('specs')" class="bg-slate-800 hover:bg-slate-700 p-4 sm:p-6 rounded-xl border border-slate-600 transition-all group flex flex-col items-center">
+                            <div class="text-blue-400 mb-3 group-hover:scale-110 transition-transform">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><path d="M8 13h2"/><path d="M8 17h2"/><path d="M14 13h2"/><path d="M14 17h2"/></svg>
+                            </div>
+                            <h3 class="text-lg sm:text-xl font-bold mb-2">Knowledge Base</h3>
+                            <p class="text-xs sm:text-sm text-slate-400">Review specifications and operational guidelines.</p>
+                        </button>
+
+                        <button onclick="navigate('inspector')" class="bg-slate-800 hover:bg-slate-700 p-4 sm:p-6 rounded-xl border border-slate-600 transition-all group flex flex-col items-center">
+                            <div class="text-indigo-400 mb-3 group-hover:scale-110 transition-transform">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+                            </div>
+                            <h3 class="text-lg sm:text-xl font-bold mb-2">Interactive Model</h3>
+                            <p class="text-xs sm:text-sm text-slate-400">Interactive schematic of the branch pipe.</p>
+                        </button>
+                        
+                        <button onclick="navigate('simulator')" class="bg-slate-800 hover:bg-slate-700 p-4 sm:p-6 rounded-xl border border-slate-600 transition-all group flex flex-col items-center border-l-4 border-l-orange-500">
+                            <div class="text-orange-400 mb-3 group-hover:scale-110 transition-transform">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
+                            </div>
+                            <h3 class="text-lg sm:text-xl font-bold mb-2 text-orange-400">Fire Simulator</h3>
+                            <p class="text-xs sm:text-sm text-slate-400">Gamified scenarios & fluid physics engine.</p>
+                        </button>
+                        
+                        <button onclick="navigate('quiz')" class="bg-slate-800 hover:bg-slate-700 p-4 sm:p-6 rounded-xl border border-slate-600 transition-all group flex flex-col items-center">
+                            <div class="text-green-400 mb-3 group-hover:scale-110 transition-transform">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                            </div>
+                            <h3 class="text-lg sm:text-xl font-bold mb-2">Knowledge Check</h3>
+                            <p class="text-xs sm:text-sm text-slate-400">Test your operational readiness.</p>
+                        </button>
+                    </div>
+                </div>
+            `,
+            inspector: `
+                <div class="animate-fade-in w-full">
+                    <button onclick="navigate('menu')" class="mb-4 text-blue-400 hover:text-blue-300 flex items-center gap-2">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg> Back to Menu
+                    </button>
+                    
+                    <div class="glass-panel p-4 sm:p-6 rounded-2xl mb-4 text-center">
+                        <h2 class="text-xl sm:text-2xl font-bold mb-2">FB5X Interactive Model</h2>
+                        <p class="text-sm text-slate-400">Click the pulsing blue hotspots to learn about each component.</p>
+                        
+                        <div class="relative w-full h-64 sm:h-80 bg-slate-800 mt-6 rounded-lg border border-slate-600 flex items-center justify-center overflow-hidden">
+                            <svg viewBox="0 0 400 200" class="w-[80%] h-auto opacity-80">
+                                <rect x="40" y="80" width="30" height="40" fill="#cbd5e1" rx="2" />
+                                <rect x="70" y="70" width="10" height="60" fill="#94a3b8" />
+                                <polygon points="80,75 160,60 160,140 80,125" fill="#f97316" opacity="0.9" />
+                                <circle cx="100" cy="100" r="12" fill="#1e293b" />
+                                <circle cx="130" cy="100" r="12" fill="#1e293b" />
+                                <rect x="110" y="30" width="80" height="15" fill="#0f172a" rx="5" />
+                                <rect x="130" y="45" width="10" height="15" fill="#0f172a" />
+                                <polygon points="160,60 340,75 340,125 160,140" fill="#f97316" opacity="0.9" />
+                                <rect x="340" y="72" width="20" height="56" fill="#cbd5e1" rx="2" />
+                                <line x1="345" y1="72" x2="345" y2="128" stroke="#475569" stroke-width="2" />
+                                <line x1="355" y1="72" x2="355" y2="128" stroke="#475569" stroke-width="2" />
+                                <!-- Rubber Seal -->
+                                <rect x="360" y="68" width="12" height="64" fill="#1e293b" rx="3" />
+                                <rect x="110" y="130" width="8" height="50" fill="#cbd5e1" />
+                            </svg>
+
+                            <button onclick="showInspectorInfo('coupling')" class="hotspot absolute top-[45%] left-[15%] sm:left-[20%] w-6 h-6 rounded-full bg-blue-500 border-2 border-white cursor-pointer"></button>
+                            <button onclick="showInspectorInfo('vents')" class="hotspot absolute top-[50%] left-[28%] sm:left-[32%] w-6 h-6 rounded-full bg-blue-500 border-2 border-white cursor-pointer"></button>
+                            <button onclick="showInspectorInfo('handle')" class="hotspot absolute top-[25%] left-[38%] w-6 h-6 rounded-full bg-blue-500 border-2 border-white cursor-pointer"></button>
+                            <button onclick="showInspectorInfo('diptube')" class="hotspot absolute top-[75%] left-[32%] sm:left-[35%] w-6 h-6 rounded-full bg-blue-500 border-2 border-white cursor-pointer"></button>
+                            <button onclick="showInspectorInfo('mesh')" class="hotspot absolute top-[50%] right-[15%] sm:right-[20%] w-6 h-6 rounded-full bg-blue-500 border-2 border-white cursor-pointer"></button>
+                            <button onclick="showInspectorInfo('seal')" class="hotspot absolute top-[50%] right-[8%] sm:right-[15%] w-6 h-6 rounded-full bg-blue-500 border-2 border-white cursor-pointer"></button>
+                        </div>
+
+                        <div id="inspector-desc" class="mt-4 p-4 bg-slate-900 border border-slate-700 rounded-lg text-left min-h-[100px] flex items-center text-slate-300 text-sm sm:text-base">
+                            <span class="text-slate-500 italic">Select a pulsing hotspot above to view component details.</span>
+                        </div>
+                    </div>
+                </div>
+            `,
+            simulator: `
+                <div class="animate-fade-in flex flex-col h-full w-full">
+                    <div class="flex justify-between items-center mb-4">
+                        <button onclick="navigate('menu')" class="text-blue-400 hover:text-blue-300 flex items-center gap-2">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg> Back
+                        </button>
+                        <div class="flex gap-2">
+                            <select id="game-mode-select" onchange="setGameMode(this.value)" class="bg-slate-800 text-white text-xs sm:text-sm border border-slate-600 rounded px-2 py-1 outline-none">
+                                <option value="sandbox">Sandbox Mode</option>
+                                <option value="time">Time Attack (45s)</option>
+                                <option value="resource">Resource Challenge</option>
+                            </select>
+                            <button onclick="restartSimulator()" class="text-slate-300 hover:text-white flex items-center gap-1 sm:gap-2 px-2 sm:px-3 py-1 rounded bg-red-900/40 hover:bg-red-800 transition-colors text-xs sm:text-sm border border-red-700/50">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg> <span class="responsive-hide">Restart</span>
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <div class="glass-panel p-3 sm:p-5 rounded-2xl mb-4 sm:mb-6">
+                        <div class="flex flex-col md:flex-row responsive-flex gap-3 sm:gap-4 mb-3 sm:mb-4">
+                            <div class="flex-1">
+                                <h2 class="text-xs text-slate-400 uppercase tracking-wider font-bold mb-2">Techniques</h2>
+                                <div class="flex flex-wrap gap-1 sm:gap-2">
+                                    <button onclick="setTechnique('roll-on')" id="btn-roll-on" class="px-2 sm:px-3 py-1 sm:py-1.5 rounded-lg text-xs sm:text-sm font-semibold bg-slate-700 hover:bg-slate-600">Roll-On</button>
+                                    <button onclick="setTechnique('bank-down')" id="btn-bank-down" class="px-2 sm:px-3 py-1 sm:py-1.5 rounded-lg text-xs sm:text-sm font-semibold bg-slate-700 hover:bg-slate-600">Bank</button>
+                                    <button onclick="setTechnique('rain-down')" id="btn-rain-down" class="px-2 sm:px-3 py-1 sm:py-1.5 rounded-lg text-xs sm:text-sm font-semibold bg-slate-700 hover:bg-slate-600">Rain</button>
+                                    <button onclick="setTechnique('basement-fill')" id="btn-basement-fill" class="px-2 sm:px-3 py-1 sm:py-1.5 rounded-lg text-xs sm:text-sm font-semibold bg-purple-900/60 hover:bg-purple-800 border border-purple-700">Hi-Exp</button>
+                                </div>
+                            </div>
+                            <div class="flex-1 border-t border-slate-700 pt-2 md:border-t-0 md:pt-0">
+                                <h2 class="text-xs text-slate-400 uppercase tracking-wider font-bold mb-2">Hazards</h2>
+                                <div class="flex flex-wrap gap-1 sm:gap-2">
+                                    <button onclick="setTechnique('water-stream')" id="btn-water-stream" class="px-2 sm:px-3 py-1 sm:py-1.5 rounded-lg text-xs sm:text-sm font-semibold bg-blue-900/60 hover:bg-blue-800 border border-blue-700">Water</button>
+                                    <button onclick="triggerWalkThrough()" id="btn-walk" class="px-2 sm:px-3 py-1 sm:py-1.5 rounded-lg text-xs sm:text-sm font-semibold bg-orange-900/60 hover:bg-orange-800 border border-orange-700">Walk</button>
+                                    <button onclick="setTechnique('dry-powder')" id="btn-dry-powder" class="px-2 sm:px-3 py-1 sm:py-1.5 rounded-lg text-xs sm:text-sm font-semibold bg-yellow-900/60 hover:bg-yellow-800 border border-yellow-700">Powder</button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Physics Controls -->
+                        <div class="flex flex-col md:flex-row responsive-flex gap-3 mt-3 bg-slate-800/50 p-3 rounded-xl border border-slate-700">
+                            <div class="flex-1 border-b border-slate-700 pb-3 md:border-b-0 md:pb-0 md:border-r md:pr-3">
+                                <label class="text-[10px] sm:text-xs text-slate-400 font-bold uppercase flex justify-between mb-1">
+                                    <span>Pressure</span><span class="text-blue-400"><span id="pressure-val">5.5</span> Bar</span>
+                                </label>
+                                <input type="range" id="pressure-slider" min="3" max="10.5" step="0.5" value="5.5" class="w-full h-2 rounded-lg appearance-none bg-slate-700 accent-blue-500" oninput="updateParams()">
+                            </div>
+                            <div class="flex-1 border-b border-slate-700 pb-3 md:border-b-0 md:pb-0 md:border-r md:pr-3">
+                                <label class="text-[10px] sm:text-xs text-slate-400 font-bold uppercase block mb-1">Mix (%)</label>
+                                <div class="flex bg-slate-900 rounded border border-slate-700 h-6">
+                                    <button id="btn-mix-3" onclick="setMix(3)" class="flex-1 text-xs rounded bg-blue-600 text-white font-bold transition-all">3%</button>
+                                    <button id="btn-mix-6" onclick="setMix(6)" class="flex-1 text-xs rounded text-slate-400 transition-all">6%</button>
+                                </div>
+                            </div>
+                            <div class="flex-1">
+                                <label class="text-[10px] sm:text-xs text-slate-400 font-bold uppercase flex justify-between mb-1">
+                                    <span>Wind</span><span class="text-sky-300" id="wind-val">Calm</span>
+                                </label>
+                                <input type="range" id="wind-slider" min="-5" max="5" step="1" value="0" class="w-full h-2 rounded-lg appearance-none bg-slate-700 accent-sky-400" oninput="updateParams()">
+                            </div>
+                        </div>
+                        
+                        <!-- Live Tactical Feedback -->
+                        <div id="tactical-feedback" class="mt-4 bg-slate-800/80 border border-slate-600 rounded-lg p-3 text-xs sm:text-sm flex flex-col gap-1 min-h-[4rem]">
+                            <!-- populated dynamically via JS -->
+                        </div>
+                    </div>
+
+                    <div id="canvas-container" class="shadow-2xl flex-grow bg-slate-900">
+                        <canvas id="simCanvas" width="800" height="400"></canvas>
+                        <div id="challenge-ui" class="absolute top-2 left-2 right-2 flex justify-between pointer-events-none hidden">
+                            <div class="bg-black/60 px-3 py-1 rounded border border-slate-700">
+                                <span class="text-xs text-slate-400 uppercase tracking-wider font-bold block">Objective</span>
+                                <span id="objective-text" class="text-white text-sm font-bold">Extinguish Fire</span>
+                            </div>
+                            <div class="bg-black/60 px-3 py-1 rounded border border-slate-700 text-right">
+                                <span class="text-xs text-slate-400 uppercase tracking-wider font-bold block" id="resource-label">Time</span>
+                                <span id="resource-value" class="text-yellow-400 text-xl font-bold font-mono">45s</span>
+                            </div>
+                        </div>
+                        
+                        <div id="game-over-screen" class="absolute inset-0 bg-black/80 flex items-center justify-center flex-col hidden z-10">
+                            <h2 id="end-title" class="text-4xl font-bold mb-2">Success!</h2>
+                            <p id="end-desc" class="text-slate-300 mb-6 max-w-sm text-center">Fire extinguished.</p>
+                            <button onclick="restartSimulator()" class="btn-primary text-white font-bold py-2 px-6 rounded-lg text-lg">Play Again</button>
+                        </div>
+                    </div>
+                </div>
+            `,
+            quiz: `...`, results: `...`
+        };
+
+        views.quiz = `
+                <div class="animate-fade-in max-w-2xl mx-auto w-full">
+                    <div class="flex justify-between items-center mb-6">
+                        <button onclick="navigate('menu')" class="text-blue-400 hover:text-blue-300 flex items-center gap-2 text-sm sm:text-base">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg> Exit Quiz
+                        </button>
+                        <div class="text-sm font-bold text-slate-400">Question <span id="q-current">1</span> of <span id="q-total">X</span></div>
+                    </div>
+                    <div class="glass-panel p-5 sm:p-8 rounded-2xl relative overflow-hidden">
+                        <div class="absolute top-0 left-0 h-1 bg-slate-700 w-full"><div id="quiz-progress" class="h-full bg-blue-500 transition-all duration-300" style="width: 0%"></div></div>
+                        <h3 id="question-text" class="text-lg sm:text-2xl font-bold mb-4 sm:mb-6 mt-2">Question?</h3>
+                        <div id="options-container" class="flex flex-col gap-2 sm:gap-3 mb-4 sm:mb-6"></div>
+                        <div id="feedback-container" class="hidden mb-4 sm:mb-6 p-3 sm:p-4 rounded-lg text-sm border"></div>
+                        <button id="next-btn" onclick="nextQuestion()" class="hidden w-full btn-primary text-white font-bold py-3 px-4 rounded-lg">Next Question</button>
+                    </div>
+                </div>
+        `;
+        views.results = `
+                <div class="animate-fade-in glass-panel p-6 sm:p-8 rounded-2xl text-center max-w-lg mx-auto w-full">
+                    <div class="mb-6 flex justify-center">
+                        <div class="w-20 h-20 sm:w-24 sm:h-24 rounded-full bg-slate-800 flex items-center justify-center border-4 border-blue-500">
+                            <span id="final-score" class="text-2xl sm:text-3xl font-bold text-white">0/0</span>
+                        </div>
+                    </div>
+                    <h2 class="text-xl sm:text-2xl font-bold mb-2" id="results-title">Complete!</h2>
+                    <p class="text-slate-300 text-sm sm:text-base mb-8" id="results-message">Good job.</p>
+                    <button onclick="navigate('menu')" class="btn-secondary w-full text-white font-bold py-3 px-4 rounded-lg flex items-center justify-center gap-2">Return</button>
+                </div>
+        `;
+
+        // Restored Specs View
+        views.specs = `
+            <div class="animate-fade-in w-full">
+                <button onclick="navigate('menu')" class="mb-4 text-blue-400 hover:text-blue-300 flex items-center gap-2">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg> Back to Menu
+                </button>
+                <div class="glass-panel rounded-2xl overflow-hidden">
+                    <div class="bg-slate-800 p-4 sm:p-6 border-b border-slate-700">
+                        <h2 class="text-xl sm:text-2xl font-bold">Chubb FB5X Knowledge Base</h2>
+                        <p class="text-slate-400 text-sm mt-1">Technical specifications and operational guidelines.</p>
+                    </div>
+                    
+                    <div class="flex flex-wrap border-b border-slate-700 bg-slate-800/50 px-2 sm:px-4">
+                        <button id="btn-tab-specs" onclick="switchTab('tab-specs')" class="tab-btn px-3 sm:px-4 py-3 border-b-2 border-blue-500 text-blue-400 font-semibold transition-colors text-xs sm:text-sm">Specs & Optimums</button>
+                        <button id="btn-tab-adv" onclick="switchTab('tab-adv')" class="tab-btn px-3 sm:px-4 py-3 border-b-2 border-transparent text-slate-400 hover:text-slate-200 font-semibold transition-colors text-xs sm:text-sm">Advantages</button>
+                        <button id="btn-tab-lim" onclick="switchTab('tab-lim')" class="tab-btn px-3 sm:px-4 py-3 border-b-2 border-transparent text-slate-400 hover:text-slate-200 font-semibold transition-colors text-xs sm:text-sm">Limitations</button>
+                        <button id="btn-tab-how" onclick="switchTab('tab-how')" class="tab-btn px-3 sm:px-4 py-3 border-b-2 border-transparent text-slate-400 hover:text-slate-200 font-semibold transition-colors text-xs sm:text-sm">How to Use</button>
+                        <button id="btn-tab-when" onclick="switchTab('tab-when')" class="tab-btn px-3 sm:px-4 py-3 border-b-2 border-transparent text-slate-400 hover:text-slate-200 font-semibold transition-colors text-xs sm:text-sm">When to Use</button>
+                    </div>
+
+                    <div class="p-4 sm:p-6 text-sm sm:text-base">
+                        <div id="tab-specs" class="tab-content block overflow-x-auto">
+                            <table class="w-full text-left border-collapse min-w-[500px]">
+                                <tbody>
+                                    <tr class="border-b border-slate-700"><th class="p-3 text-slate-300 w-1/3">Water Requirement</th><td class="p-3">230 l/min at 5.5 bar</td></tr>
+                                    <tr class="border-b border-slate-700"><th class="p-3 text-slate-300">Optimum Pressure</th><td class="p-3 text-green-400 font-bold">5.5 bar <span class="text-slate-400 font-normal text-xs sm:text-sm ml-2">(Range: 3 to 10.5 bar)</span></td></tr>
+                                    <tr class="border-b border-slate-700"><th class="p-3 text-slate-300">Foam Output</th><td class="p-3">2270 l/min</td></tr>
+                                    <tr class="border-b border-slate-700"><th class="p-3 text-slate-300">Calibration Options</th><td class="p-3">3% or 6% or premix</td></tr>
+                                    <tr class="border-b border-slate-700"><th class="p-3 text-slate-300">Optimum Throw (Range)</th><td class="p-3 text-green-400 font-bold">21m to 24m <span class="text-slate-400 font-normal text-xs sm:text-sm ml-2">(At 5.5 bar optimum)</span></td></tr>
+                                    <tr class="border-b border-slate-700"><th class="p-3 text-slate-300">Max Inductor Distance</th><td class="p-3 text-red-400 font-semibold">Must not exceed 60m</td></tr>
+                                    <tr><th class="p-3 text-slate-300">Weight & Material</th><td class="p-3">Light alloy, 2 kg</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <div id="tab-adv" class="tab-content hidden text-slate-300 space-y-4">
+                            <ul class="list-disc pl-5 space-y-2">
+                                <li><strong>Lightweight & Portable:</strong> At only 2kg, it is easily handled by a single firefighter.</li>
+                                <li><strong>Venturi Air Entrainment:</strong> Effectively creates mechanical foam by mixing air and foam solution right at the branch.</li>
+                                <li><strong>Vapor Suppression:</strong> Rapidly blankets unignited fuel spills, preventing ignition by sealing off flammable vapors.</li>
+                                <li><strong>Cooling & Separating:</strong> Water content cools the fuel, while the foam physically separates flames from the fuel surface.</li>
+                            </ul>
+                        </div>
+
+                        <div id="tab-lim" class="tab-content hidden text-slate-300 space-y-4">
+                            <ul class="list-disc pl-5 space-y-2">
+                                <li><strong class="text-red-400">Ineffective on Class C/D:</strong> Do NOT use on energized electrical equipment, combustible metals, or pressurized gases.</li>
+                                <li><strong class="text-orange-400">Three-Dimensional Fires:</strong> Ineffective on flowing, plunging, or 3D fires as a secure blanket cannot be established.</li>
+                                <li><strong class="text-orange-400">Hose Lay Limits:</strong> Fails to draw concentrate if the distance between the inline inductor and the branch exceeds 60m.</li>
+                                <li><strong class="text-orange-400">Pressure Hazard:</strong> Poor foam quality if pressure is too low (< 4.5 bar). <strong class="text-red-400">Operating at too high a pressure (> 7.5 bar) causes excessive reaction force, leading firefighters to lose control of the branch.</strong></li>
+                                <li><strong class="text-orange-400">Environmental Impact:</strong> Foam concentrates are highly toxic to aquatic life. Runoff must be strictly minimized.</li>
+                            </ul>
+                        </div>
+
+                        <div id="tab-how" class="tab-content hidden text-slate-300 space-y-4">
+                            <div class="bg-blue-900/20 border border-blue-800 p-3 rounded-lg mb-2 mt-1">
+                                <h4 class="text-blue-400 font-bold text-xs sm:text-sm mb-1 uppercase tracking-wider">Hose Layout Options</h4>
+                                <p class="text-xs sm:text-sm font-semibold mb-2"><span class="text-blue-300">Option 1 (Inline Inductor):</span> Pump Discharge &rarr; Inline Inductor &rarr; 70mm Hose (Max 60m) &rarr; FB5X Branch</p>
+                                <p class="text-xs sm:text-sm font-semibold"><span class="text-blue-300">Option 2 (Branch Dip Tube):</span> Pump Discharge &rarr; 70mm Hose &rarr; FB5X Branch (w/ Dip Tube in Foam Drum)</p>
+                            </div>
+                            <ol class="list-decimal pl-5 space-y-3">
+                                <li><strong>Connecting Up:</strong> You can induce foam at the pump using an inline inductor, or use the FB5X's own pick-up tube directly from a container carried to the branch.</li>
+                                <li><strong>Continuous Supply:</strong> <strong class="text-blue-400">Cut the top off the foam drum</strong> to allow a second firefighter to continuously decant fresh concentrate, ensuring a steady flow without breaking suction.</li>
+                                <li><strong>Hose Lay:</strong> Run standard <strong>70mm delivery hose</strong> to the FB5X. <strong class="text-red-400">Crucial:</strong> If using an inline inductor, this line must not exceed 60 metres to prevent back-pressure from killing foam induction.</li>
+                                <li><strong>Pumping:</strong> Supply water at the optimum pressure of <strong>5.5 bar</strong>.</li>
+                                <li><strong>Handling:</strong> Hold the branch using the designated black handle. Never hold the base, as this blocks the Venturi air vents.</li>
+                            </ol>
+                        </div>
+
+                        <div id="tab-when" class="tab-content hidden text-slate-300 space-y-4">
+                            <ul class="list-disc pl-5 space-y-2">
+                                <li><strong>Unignited Spills:</strong> Securing vapor leaks from transport accidents, broken pipelines, or overfilled tanks to prevent ignition.</li>
+                                <li><strong>Class B Liquid Fires:</strong> Extinguishing ignited pools of petrol, diesel, oil, or specific polar solvents.</li>
+                                <li><strong>Target Locations:</strong> Commonly deployed at vehicle RTCs with fuel leaks, loading racks, small tank farms, and chemical plants.</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+
+        const appContainer = document.getElementById('app-container');
+        const scoreDisplay = document.getElementById('score-display');
+        const currentScoreEl = document.getElementById('current-score');
+
+        function navigate(targetView) {
+            state.view = targetView;
+            stopSimulator(); synth.stopAll();
+            appContainer.innerHTML = views[targetView];
+
+            if (targetView === 'quiz') {
+                state.score = 0; state.currentQuestionIndex = 0; currentScoreEl.innerText = state.score;
+                scoreDisplay.classList.remove('hidden'); document.getElementById('q-total').innerText = quizQuestions.length;
+                renderQuestion();
+            } else if (targetView === 'simulator') {
+                scoreDisplay.classList.add('hidden');
+                synth.init();
+                initSimulator();
+                setGameMode('sandbox');
+                setTechnique('roll-on'); 
+            } else if (targetView === 'inspector') {
+                scoreDisplay.classList.add('hidden');
+            } else if (targetView === 'specs') {
+                scoreDisplay.classList.add('hidden');
+                setTimeout(() => switchTab('tab-specs'), 10);
+            } else if (targetView === 'results') {
+                scoreDisplay.classList.add('hidden');
+                document.getElementById('final-score').innerText = `${state.score}/${quizQuestions.length}`;
+                const percentage = state.score / quizQuestions.length;
+                let title = "Needs Review"; let msg = "Review the materials and try again.";
+                if (percentage === 1) { title = "Perfect Score!"; msg = "Excellent grasp of DWFRS foam theory."; }
+                else if (percentage >= 0.7) { title = "Solid Work"; msg = "Good understanding of the concepts."; }
+                document.getElementById('results-title').innerText = title; document.getElementById('results-message').innerText = msg;
+            } else { scoreDisplay.classList.add('hidden'); }
+            setDeviceMode(state.deviceMode);
+        }
+
+        // Tactical Feedback Logic
+        function updateTacticalFeedback() {
+            const panel = document.getElementById('tactical-feedback');
+            if (!panel) return;
+            
+            let adv = []; let dis = []; let effect = "";
+
+            switch(state.activeTechnique) {
+                case 'roll-on':
+                    adv.push("Gentle application prevents splashing fuel.");
+                    dis.push("Can be slow to reach the center of large spills.");
+                    effect = "Foam rolls smoothly across the surface."; break;
+                case 'bank-down':
+                    adv.push("Minimizes fuel agitation; highly effective for contained dike fires.");
+                    dis.push("Requires an elevated object (wall/tank) to bank off.");
+                    effect = "Foam flows gently down the object onto the fuel."; break;
+                case 'rain-down':
+                    adv.push("Covers large areas evenly; no backing object required.");
+                    dis.push("Highly vulnerable to wind drift; slower to build blanket.");
+                    effect = "Foam falls lightly like snow, minimizing disruption."; break;
+                case 'basement-fill':
+                    adv.push("Rapidly fills confined volumes; excludes oxygen entirely.");
+                    dis.push("Ineffective outdoors; requires a tight seal at the opening.");
+                    effect = "Fluid high-expansion foam expands massively to smother the room."; break;
+                case 'water-stream':
+                    adv.push("Provides cooling (but ineffective for Class B).");
+                    dis.push("Sinks below fuel and boils violently. Destroys foam. Spreads fire.");
+                    effect = "Causes a dangerous boil-over and massive flare-ups."; break;
+                case 'dry-powder':
+                    adv.push("Instant flame knockdown.");
+                    dis.push("Creates NO vapor seal. Destroys foam. Fire flashes back immediately.");
+                    effect = "Interrupts chemical reaction temporarily, leaving fuel exposed."; break;
+                case 'none':
+                    if (state.walker.active) {
+                        dis.push("Walking through foam mechanically breaks the vapor seal.");
+                        effect = "Flammable vapors escape through footprints and reignite instantly.";
+                    } else { effect = "Select a technique to begin application."; }
+                    break;
+            }
+
+            if (['roll-on', 'bank-down', 'rain-down'].includes(state.activeTechnique)) {
+                if (state.pressure < 4.5) dis.push("Low Pressure: Poor throw and soupy, unexpanded foam.");
+                else if (state.pressure > 7.5) dis.push("High Pressure: Chaotic splash, wastes concentrate, and causes loss of control of the branch.");
+                else adv.push("Optimum Pressure (5.5): Ideal foam expansion and throw distance.");
+
+                if (state.mix === 6) {
+                    adv.push("6% Mix: Creates a thicker, more stable, heat-resistant blanket.");
+                    dis.push("6% Mix: Drains concentrate supply twice as fast.");
+                }
+            }
+
+            let html = `<div><strong class="text-blue-400">Effect:</strong> <span class="text-slate-300">${effect}</span></div>`;
+            if (adv.length > 0) html += `<div><strong class="text-green-400">Advantages:</strong> <span class="text-slate-300">${adv.join(" ")}</span></div>`;
+            if (dis.length > 0) html += `<div><strong class="text-orange-400">Disadvantages:</strong> <span class="text-slate-300">${dis.join(" ")}</span></div>`;
+            panel.innerHTML = html;
+        }
+
+        function updateParams() {
+            state.pressure = parseFloat(document.getElementById('pressure-slider').value);
+            document.getElementById('pressure-val').innerText = state.pressure.toFixed(1);
+            
+            state.wind = parseInt(document.getElementById('wind-slider').value);
+            let windText = "Calm";
+            if(state.wind < 0) windText = `East ${Math.abs(state.wind)}`;
+            if(state.wind > 0) windText = `West ${state.wind}`;
+            document.getElementById('wind-val').innerText = windText;
+            updateTacticalFeedback();
+        }
+
+        function setMix(val) {
+            state.mix = val;
+            document.getElementById('btn-mix-3').className = val === 3 ? 'flex-1 text-xs rounded bg-blue-600 text-white font-bold transition-all shadow-lg' : 'flex-1 text-xs rounded text-slate-400 hover:text-white font-bold transition-all';
+            document.getElementById('btn-mix-6').className = val === 6 ? 'flex-1 text-xs rounded bg-blue-600 text-white font-bold transition-all shadow-lg' : 'flex-1 text-xs rounded text-slate-400 hover:text-white font-bold transition-all';
+            updateTacticalFeedback();
+        }
+
+        const inspectorData = {
+            coupling: "<strong class='text-blue-400'>64mm Instantaneous Coupling:</strong> Standard connection to the 70mm delivery hose. Receives the water/foam solution mixture pumped from the inductor.",
+            vents: "<strong class='text-blue-400'>Venturi Air Entrainment Vents:</strong> As pressurized solution rushes past these openings, it creates a vacuum (Venturi effect) that violently draws surrounding air into the chamber to aerate the foam. NEVER cover these with your hands.",
+            handle: "<strong class='text-blue-400'>Ergonomic Handle:</strong> Designed to give the operator complete control of the branch without risking their gloves sliding over and blocking the crucial air vents.",
+            diptube: "<strong class='text-blue-400'>Dip Tube (Optional):</strong> Rather than using an inline inductor at the pump, this quick-release tube can be dropped directly into a foam drum carried by a second firefighter to induce foam right at the branch.",
+            mesh: "<strong class='text-blue-400'>Conical Agitation Mesh:</strong> Forces the water, concentrate, and newly entrained air through a tight physical mesh, mechanically breaking it down to produce uniform, finished foam bubbles.",
+            seal: "<strong class='text-blue-400'>Rubber Nozzle Seal:</strong> A durable rubber ring around the end of the branch. It allows the operator to push the nozzle into a tight opening (like a basement window or vent) and create a seal, enabling High Expansion foam to rapidly fill the confined space without blowing back out."
+        };
+
+        function showInspectorInfo(part) { document.getElementById('inspector-desc').innerHTML = inspectorData[part] || "Select a part."; }
+
+        // --- QUIZ LOGIC ---
+        function renderQuestion() {
+            const q = quizQuestions[state.currentQuestionIndex];
+            document.getElementById('q-current').innerText = state.currentQuestionIndex + 1;
+            document.getElementById('question-text').innerText = q.q;
+            document.getElementById('quiz-progress').style.width = `${((state.currentQuestionIndex) / quizQuestions.length) * 100}%`;
+            const opts = document.getElementById('options-container'); opts.innerHTML = '';
+            q.options.forEach((opt, index) => {
+                const btn = document.createElement('button');
+                btn.className = "text-left text-sm sm:text-base w-full p-3 sm:p-4 rounded-lg border border-slate-600 bg-slate-800 hover:bg-slate-700 transition-colors";
+                btn.innerText = opt; btn.onclick = () => handleAnswer(index, btn);
+                opts.appendChild(btn);
+            });
+            document.getElementById('feedback-container').classList.add('hidden');
+            document.getElementById('next-btn').classList.add('hidden');
+        }
+
+        function handleAnswer(selectedIndex, btnElement) {
+            const q = quizQuestions[state.currentQuestionIndex];
+            const buttons = document.getElementById('options-container').querySelectorAll('button');
+            buttons.forEach(b => b.disabled = true);
+            const isCorrect = selectedIndex === q.answer;
+            if (isCorrect) { state.score++; currentScoreEl.innerText = state.score; }
+            btnElement.classList.replace('bg-slate-800', isCorrect ? 'bg-green-900' : 'bg-red-900');
+            btnElement.classList.replace('border-slate-600', isCorrect ? 'border-green-500' : 'border-red-500');
+            if(!isCorrect) {
+                buttons[q.answer].classList.replace('bg-slate-800', 'bg-green-900');
+                buttons[q.answer].classList.replace('border-slate-600', 'border-green-500');
+            }
+            const feedback = document.getElementById('feedback-container');
+            feedback.innerHTML = `<p class="font-bold mb-1 ${isCorrect ? 'text-green-400' : 'text-red-400'}">${isCorrect ? 'Correct!' : 'Incorrect.'}</p><p class="text-slate-300 text-xs sm:text-sm">${q.explanation}</p>`;
+            feedback.classList.remove('hidden'); feedback.classList.add(isCorrect ? 'bg-green-900/20' : 'bg-red-900/20', isCorrect ? 'border-green-800' : 'border-red-800');
+            document.getElementById('next-btn').classList.remove('hidden');
+            if (state.currentQuestionIndex === quizQuestions.length - 1) document.getElementById('next-btn').innerText = "View Results";
+        }
+        function nextQuestion() { state.currentQuestionIndex++; if (state.currentQuestionIndex < quizQuestions.length) renderQuestion(); else navigate('results'); }
+
+        // --- SIMULATOR (CANVAS) LOGIC ---
+        let simCanvas, ctx, simAnimationId, lastTime = 0;
+        let particles = [], smokeParticles = [], foamBlanket = [], powderLevel = [];
+
+        function setGameMode(mode) {
+            state.gameMode = mode;
+            const ui = document.getElementById('challenge-ui');
+            if (mode === 'sandbox') { ui.classList.add('hidden'); } 
+            else {
+                ui.classList.remove('hidden');
+                document.getElementById('resource-label').innerText = mode === 'time' ? 'Time' : 'Concentrate';
+                document.getElementById('resource-value').className = mode === 'time' ? 'text-yellow-400 text-lg font-bold font-mono' : 'text-green-400 text-lg font-bold font-mono';
+            }
+            restartSimulator();
+        }
+
+        function initSimulator() {
+            simCanvas = document.getElementById('simCanvas'); ctx = simCanvas.getContext('2d');
+            restartSimulator(); lastTime = performance.now(); simLoop(lastTime);
+        }
+
+        function stopSimulator() { if (simAnimationId) cancelAnimationFrame(simAnimationId); }
+
+        function restartSimulator() {
+            particles = []; smokeParticles = []; foamBlanket = []; powderLevel = [];
+            for(let i=0; i<80; i++) { foamBlanket.push(0); powderLevel.push(0); }
+            state.walker.active = false; state.gameStatus = 'playing';
+            state.timeRemaining = 45; state.concentrate = 100;
+            document.getElementById('game-over-screen').classList.add('hidden');
+            synth.stopAll();
+            updateTacticalFeedback();
+        }
+
+        function triggerWalkThrough() {
+            if(state.gameStatus !== 'playing') return;
+            state.walker.active = true; state.walker.x = 250;
+            ['roll-on', 'bank-down', 'rain-down', 'water-stream', 'basement-fill', 'dry-powder'].forEach(t => {
+                const btn = document.getElementById(`btn-${t}`);
+                if(btn) btn.classList.remove('bg-blue-600', 'bg-blue-800', 'bg-purple-600', 'bg-yellow-600', 'text-white');
+            });
+            state.activeTechnique = 'none'; 
+            updateTacticalFeedback();
+        }
+
+        function setTechnique(tech) {
+            if(state.gameStatus !== 'playing') return;
+            state.activeTechnique = tech; state.walker.active = false;
+            
+            ['roll-on', 'bank-down', 'rain-down'].forEach(t => { const btn = document.getElementById(`btn-${t}`); if(btn) { btn.classList.remove('bg-blue-600', 'text-white'); btn.classList.add('bg-slate-700'); } });
+            ['water-stream', 'basement-fill', 'dry-powder'].forEach(t => { const btn = document.getElementById(`btn-${t}`); if(btn) { btn.className = btn.className.replace(/bg-\w+-600|text-white/g, '').trim(); } });
+            
+            const activeBtn = document.getElementById(`btn-${tech}`);
+            if(activeBtn) {
+                if (tech === 'water-stream') activeBtn.classList.add('bg-blue-600', 'text-white');
+                else if (tech === 'basement-fill') activeBtn.classList.add('bg-purple-600', 'text-white');
+                else if (tech === 'dry-powder') activeBtn.classList.add('bg-yellow-600', 'text-white');
+                else { activeBtn.classList.remove('bg-slate-700'); activeBtn.classList.add('bg-blue-600', 'text-white'); }
+            }
+            if (tech === 'basement-fill' || tech === 'roll-on' || tech === 'bank-down' || tech === 'rain-down') {
+                particles = []; foamBlanket = foamBlanket.map(() => 0); powderLevel = powderLevel.map(() => 0);
+            }
+            updateTacticalFeedback();
+        }
+
+        class SmokeParticle {
+            constructor(x, y, isSteam) {
+                this.x = x + (Math.random() - 0.5) * 20; this.y = y;
+                this.vx = (Math.random() - 0.5) * 0.5; this.vy = -Math.random() * 2 - 1; 
+                this.life = 1.0; this.size = Math.random() * 10 + 10; this.isSteam = isSteam;
+            }
+            update() {
+                this.x += this.vx + (state.wind * 0.5); 
+                this.y += this.vy; this.size += 0.2; this.life -= 0.005;
+            }
+            draw(ctx) {
+                let rgb = this.isSteam ? '200, 200, 200' : '20, 20, 20';
+                ctx.fillStyle = `rgba(${rgb}, ${this.life * 0.5})`;
+                ctx.beginPath(); ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2); ctx.fill();
+            }
+        }
+
+        class Particle {
+            constructor(x, y, vx, vy, type) {
+                this.x = x; this.y = y;
+                this.vx = vx + (Math.random() - 0.5) * 1.5; this.vy = vy + (Math.random() - 0.5) * 1.5;
+                this.life = 1.0; this.type = type; this.size = Math.random() * 4 + 3;
+            }
+            update() {
+                this.x += this.vx + (state.wind * 0.1); this.y += this.vy; this.life -= 0.005;
+
+                if (this.type === 'roll-on') { this.vy += 0.2; if (this.y > 340) { this.y = 340; this.vy = 0; this.vx = 4; } } 
+                else if (this.type === 'bank-down') {
+                    this.vy += 0.1; 
+                    if (this.x > 650 && this.y < 340) { this.x = 650; this.vx = 0; this.vy = 3; }
+                    if (this.y > 340) { this.y = 340; this.vy = 0; this.vx = -1.5; }
+                } else if (this.type === 'rain-down') { this.vy += 0.15; if (this.y > 340) { this.y = 340; this.vx = 0; this.vy = 0; } } 
+                else if (this.type === 'water-stream') { this.vy += 0.2; if (this.y > 340) { this.y = 340; this.vx = 0; this.vy = 0; this.life -= 0.05; } } 
+                else if (this.type === 'dry-powder') { this.vx *= 0.95; this.vy += 0.05; this.size += 0.1; } 
+                else if (this.type === 'basement-fill') { this.vy += 0.08; this.vx *= 0.98; }
+
+                let segment = Math.floor(this.x / 10);
+                if ((this.type === 'roll-on' || this.type === 'bank-down' || this.type === 'rain-down') && this.y >= 340 && Math.abs(this.vx) < 5) {
+                    if (segment >= 0 && segment < 80) {
+                        if (foamBlanket[segment] < 20) { 
+                            let quality = 1.0; if (state.pressure < 4.5) quality = 0.4; else if (state.pressure > 7.5) quality = 0.5; 
+                            let mixMultiplier = state.mix === 6 ? 1.4 : 1.0;
+                            foamBlanket[segment] += (0.2 * quality * mixMultiplier); this.life -= 0.05; 
+                        }
+                    }
+                }
+                if ((this.type === 'water-stream' && this.y >= 340) || (this.type === 'dry-powder' && this.y >= 300)) {
+                    if (segment >= 0 && segment < 80) {
+                        if (foamBlanket[segment] > 0) {
+                            foamBlanket[segment] -= (this.type === 'water-stream' ? 1.0 : 0.8); 
+                            if (foamBlanket[segment] < 0) foamBlanket[segment] = 0;
+                        }
+                        if (this.type === 'water-stream' && foamBlanket[segment] === 0) powderLevel[segment] = -8; 
+                    }
+                }
+                if (this.type === 'dry-powder' && this.y > 280) { if (segment >= 0 && segment < 80) powderLevel[segment] = Math.min(powderLevel[segment] + 1.0, 15); }
+                if (this.type === 'basement-fill') {
+                    if (segment >= 25 && segment <= 75) { 
+                        let floorY = 340 - foamBlanket[segment];
+                        if (this.y >= floorY || this.x > 740) { if (foamBlanket[segment] < 240) foamBlanket[segment] += 2.5; this.life = 0; }
+                    }
+                }
+            }
+            draw(ctx) {
+                if (this.type === 'water-stream') ctx.fillStyle = `rgba(59, 130, 246, ${this.life})`; 
+                else if (this.type === 'dry-powder') ctx.fillStyle = `rgba(253, 224, 71, ${this.life * 0.4})`;
+                else ctx.fillStyle = `rgba(226, 232, 240, ${this.life})`; 
+                ctx.beginPath(); ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2); ctx.fill();
+            }
+        }
+
+        function drawFirefighter(ctx, x, y, isBasement) {
+            ctx.fillStyle = '#facc15'; ctx.beginPath(); ctx.arc(x + 10, y + 5, 8, 0, Math.PI*2); ctx.fill();
+            ctx.fillStyle = '#1e293b'; ctx.fillRect(x + 12, y + 2, 6, 6);
+            ctx.fillStyle = '#ca8a04'; ctx.fillRect(x, y + 15, 20, 45);
+            ctx.fillStyle = '#475569'; ctx.beginPath(); ctx.roundRect(x - 8, y + 15, 12, 35, 4); ctx.fill();
+            ctx.fillStyle = '#451a03'; ctx.fillRect(x + 2, y + 60, 6, 15); ctx.fillRect(x + 12, y + 60, 6, 15);
+            ctx.fillStyle = '#a16207'; if(isBasement) { ctx.fillRect(x + 10, y + 25, 20, 6); } else { ctx.fillRect(x + 10, y + 28, 20, 6); }
+        }
+
+        function simLoop(timestamp) {
+            if(state.view !== 'simulator') return;
+            const dt = (timestamp - lastTime) / 1000; lastTime = timestamp;
+            ctx.clearRect(0, 0, simCanvas.width, simCanvas.height);
+
+            let isSpraying = state.activeTechnique !== 'none' && state.gameStatus === 'playing';
+            let isWaterBoiling = false;
+
+            for(let i=0; i<80; i++) {
+                if(powderLevel[i] > 0) powderLevel[i] -= 0.15; else if(powderLevel[i] < 0) powderLevel[i] += 0.2; 
+                if(Math.abs(powderLevel[i]) < 0.2) powderLevel[i] = 0;
+            }
+
+            let newFoam = [...foamBlanket];
+            for (let i = 25; i <= 75; i++) {
+                if (foamBlanket[i] > 0) {
+                    let fluidity = (state.activeTechnique === 'basement-fill') ? 1.0 : 4.0;
+                    let transfer = (state.activeTechnique === 'basement-fill') ? 0.45 : 0.2;
+                    if (i < 75 && foamBlanket[i] > foamBlanket[i + 1] + fluidity) { let diff = (foamBlanket[i] - foamBlanket[i + 1]) * transfer; newFoam[i] -= diff; newFoam[i + 1] += diff; }
+                    if (i > 25 && foamBlanket[i] > foamBlanket[i - 1] + fluidity) { let diff = (foamBlanket[i] - foamBlanket[i - 1]) * transfer; newFoam[i] -= diff; newFoam[i - 1] += diff; }
+                }
+            }
+            foamBlanket = newFoam;
+
+            ctx.fillStyle = '#0f172a'; ctx.fillRect(0, 0, 800, 400);
+
+            if (state.activeTechnique === 'basement-fill') {
+                ctx.fillStyle = '#020617'; ctx.fillRect(250, 100, 500, 250);
+                ctx.fillStyle = '#334155'; ctx.fillRect(210, 80, 40, 70); ctx.fillRect(210, 200, 40, 150); ctx.fillRect(750, 80, 40, 270); ctx.fillRect(210, 80, 580, 20);
+            }
+
+            ctx.fillStyle = '#1e293b'; ctx.fillRect(0, 350, 800, 50);
+            ctx.fillStyle = '#7f1d1d'; ctx.fillRect(250, 345, 500, 5);
+            
+            let fireIntensitySum = 0;
+            for(let i=25; i<75; i+=3) {
+                if (foamBlanket[i] < 10 && powderLevel[i] < 5) {
+                    let intensity = (foamBlanket[i] <= 0) ? 1.5 : 1.0; 
+                    if (powderLevel[i] < 0) { intensity = 3.5; isWaterBoiling = true; } 
+                    fireIntensitySum += intensity;
+                    ctx.fillStyle = `rgba(249, 115, 22, ${Math.random() * 0.5 + 0.5})`; 
+                    let flameHeight = (Math.random() * 30 + 10 - (foamBlanket[i]*2)) * intensity;
+                    if (flameHeight > 0) {
+                        ctx.beginPath(); ctx.moveTo(i*10, 345); ctx.lineTo(i*10 + 5, 345 - flameHeight); ctx.lineTo(i*10 + 10, 345); ctx.fill();
+                        if (Math.random() > 0.8) {
+                            let isSteam = foamBlanket[i] > 2 || powderLevel[i] < -2;
+                            smokeParticles.push(new SmokeParticle(i*10 + 5, 345 - flameHeight, isSteam));
+                        }
+                    }
+                }
+            }
+
+            if (state.activeTechnique === 'bank-down') { ctx.fillStyle = '#334155'; ctx.fillRect(660, 150, 40, 200); }
+
+            for (let i = smokeParticles.length - 1; i >= 0; i--) {
+                let sp = smokeParticles[i]; sp.update(); sp.draw(ctx);
+                if (sp.life <= 0 || sp.y < -50) smokeParticles.splice(i, 1);
+            }
+
+            let nozzleX = 50, nozzleY = 300, emitVx = 0, emitVy = 0;
+            if (state.activeTechnique === 'basement-fill') {
+                drawFirefighter(ctx, 170, 150, true);
+                ctx.fillStyle = '#94a3b8'; ctx.fillRect(190, 170, 40, 20); 
+                emitVx = 6; emitVy = 2; nozzleX = 230; nozzleY = 180;
+            } else {
+                drawFirefighter(ctx, 30, 270, false);
+                ctx.fillStyle = '#94a3b8'; 
+                if (state.activeTechnique === 'roll-on') { ctx.fillRect(45, 300, 35, 8); emitVx = 8; emitVy = 2; nozzleX = 80; nozzleY = 304; } 
+                else if (state.activeTechnique === 'water-stream') { ctx.fillRect(45, 290, 35, 8); emitVx = 15 + Math.random() * 3; emitVy = -1 + (Math.random() - 0.5) * 2; nozzleX = 80; nozzleY = 294; } 
+                else if (state.activeTechnique === 'dry-powder') { ctx.fillRect(45, 300, 35, 8); emitVx = 14; emitVy = -1.5; nozzleX = 80; nozzleY = 304; } 
+                else if (state.activeTechnique === 'bank-down') { ctx.fillRect(45, 290, 35, 8); emitVx = 12; emitVy = -3; nozzleX = 80; nozzleY = 294; } 
+                else if (state.activeTechnique === 'rain-down') {
+                    ctx.save(); ctx.translate(45, 300); ctx.rotate(-Math.PI / 4); ctx.fillRect(0, 0, 35, 8); 
+                    ctx.fillStyle = '#0f172a'; ctx.fillRect(30, -8, 10, 15); ctx.restore();
+                    emitVx = 3.5 + (Math.random() * 2.5); emitVy = -7.5 - (Math.random() * 1.5); nozzleX = 65; nozzleY = 265;
+                }
+            }
+
+            if (isSpraying && state.activeTechnique !== 'basement-fill') {
+                let pRatio = state.pressure / 5.5; emitVx *= pRatio;
+                if (state.pressure > 7.5) emitVy += (Math.random() - 0.5) * (state.pressure - 6);
+            }
+
+            if (isSpraying && state.concentrate > 0 && Math.random() > 0.1) {
+                let particleCount = (state.activeTechnique === 'basement-fill') ? 10 : 4;
+                if(state.activeTechnique === 'dry-powder') particleCount = 6; 
+                for(let i=0; i<particleCount; i++) particles.push(new Particle(nozzleX, nozzleY, emitVx, emitVy, state.activeTechnique));
+            }
+
+            for (let i = particles.length - 1; i >= 0; i--) {
+                let p = particles[i]; p.update(); p.draw(ctx);
+                if (p.life <= 0) particles.splice(i, 1);
+            }
+
+            if (state.walker.active) {
+                state.walker.x += 1.5; let bounce = Math.abs(Math.sin(state.walker.x * 0.1)) * 6;
+                ctx.fillStyle = '#451a03'; ctx.fillRect(state.walker.x - 8, 320 - bounce, 8, 20); ctx.fillRect(state.walker.x + 2, 330 - (6-bounce), 8, 20); ctx.fillRect(state.walker.x + 2, 350 - (6-bounce), 14, 6); 
+                let seg = Math.floor((state.walker.x + 5) / 10);
+                if (seg >= 0 && seg < 80) { foamBlanket[seg] = 0; if (seg > 0) foamBlanket[seg-1] = 0; }
+                if (state.walker.x > 750) { state.walker.active = false; updateTacticalFeedback(); } 
+            }
+
+            ctx.fillStyle = 'rgba(248, 250, 252, 0.9)'; 
+            for(let i=0; i<80; i++) if (foamBlanket[i] > 0) ctx.fillRect(i*10, 345 - foamBlanket[i], 12, foamBlanket[i] + 5);
+
+            synth.update(isSpraying, isWaterBoiling);
+
+            if (state.gameStatus === 'playing') {
+                if (state.gameMode === 'time') {
+                    state.timeRemaining -= dt; document.getElementById('resource-value').innerText = Math.max(0, state.timeRemaining).toFixed(1) + 's';
+                    if (state.timeRemaining <= 0) endGame(false, "Time ran out before the fire was extinguished.");
+                } else if (state.gameMode === 'resource' && isSpraying && state.activeTechnique !== 'water-stream' && state.activeTechnique !== 'dry-powder') {
+                    let drainRate = state.mix === 6 ? 3.0 : 1.5; if(state.pressure > 7.5) drainRate *= 1.5; 
+                    state.concentrate -= dt * drainRate; document.getElementById('resource-value').innerText = Math.max(0, state.concentrate).toFixed(0) + '%';
+                    if (state.concentrate <= 0) endGame(false, "You ran out of foam concentrate.");
+                }
+
+                if (fireIntensitySum === 0 && !state.walker.active) {
+                    let fullyCovered = true; for(let i=25; i<75; i++) { if(foamBlanket[i] < 5) fullyCovered = false; }
+                    // Prevent Game Over triggering in Sandbox mode
+                    if (fullyCovered && state.gameMode !== 'sandbox') { endGame(true, "Fire successfully suppressed and vapor seal secured."); }
+                }
+            }
+            simAnimationId = requestAnimationFrame(simLoop);
+        }
+
+        function endGame(won, message) {
+            state.gameStatus = won ? 'won' : 'lost';
+            setTechnique('none'); 
+            const screen = document.getElementById('game-over-screen');
+            document.getElementById('end-title').innerText = won ? "Success!" : "Mission Failed";
+            document.getElementById('end-title').className = won ? "text-4xl font-bold mb-2 text-green-400" : "text-4xl font-bold mb-2 text-red-500";
+            document.getElementById('end-desc').innerText = message;
+            screen.classList.remove('hidden');
+            synth.stopAll();
+        }
+
+        navigate('menu');
+    </script>
+</body>
+</html>
+
+
+
